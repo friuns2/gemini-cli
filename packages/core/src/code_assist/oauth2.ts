@@ -24,6 +24,9 @@ import {
   cacheGoogleAccount,
   getCachedGoogleAccount,
   clearCachedGoogleAccount,
+  getAllAvailableAccounts,
+  switchToAccount as switchAccountInUserFile,
+  removeAccountFromList,
 } from '../utils/user_account.js';
 import { AuthType } from '../core/contentGenerator.js';
 import readline from 'node:readline';
@@ -173,7 +176,7 @@ async function authWithUserCode(client: OAuth2Client): Promise<boolean> {
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question('Enter the authorization code: ', (code) => {
+    rl.question('Enter the authorization code: ', (code: string) => {
       rl.close();
       resolve(code.trim());
     });
@@ -209,7 +212,7 @@ async function authWithWeb(client: OAuth2Client): Promise<OauthWebLogin> {
   });
 
   const loginCompletePromise = new Promise<void>((resolve, reject) => {
-    const server = http.createServer(async (req, res) => {
+    const server = http.createServer(async (req: any, res: any) => {
       try {
         if (req.url!.indexOf('/oauth2callback') === -1) {
           res.writeHead(HTTP_REDIRECT, { Location: SIGN_IN_FAILURE_URL });
@@ -278,7 +281,7 @@ export function getAvailablePort(): Promise<number> {
         server.close();
         server.unref();
       });
-      server.on('error', (e) => reject(e));
+      server.on('error', (e: any) => reject(e));
       server.on('close', () => resolve(port));
     } catch (e) {
       reject(e);
@@ -310,7 +313,11 @@ async function loadCachedCredentials(client: OAuth2Client): Promise<boolean> {
 }
 
 async function cacheCredentials(credentials: Credentials) {
-  const filePath = getCachedCredentialPath();
+  const currentAccount = getCachedGoogleAccount();
+  const filePath = currentAccount 
+    ? getCachedCredentialPathForAccount(currentAccount)
+    : getCachedCredentialPath();
+    
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 
   const credString = JSON.stringify(credentials, null, 2);
@@ -319,6 +326,12 @@ async function cacheCredentials(credentials: Credentials) {
 
 function getCachedCredentialPath(): string {
   return path.join(os.homedir(), GEMINI_DIR, CREDENTIAL_FILENAME);
+}
+
+function getCachedCredentialPathForAccount(email: string): string {
+  // Create a safe filename from email
+  const safeEmail = email.replace(/[^a-zA-Z0-9@.-]/g, '_');
+  return path.join(os.homedir(), GEMINI_DIR, `oauth_creds_${safeEmail}.json`);
 }
 
 export async function clearCachedCredentialFile() {
@@ -362,5 +375,116 @@ async function fetchAndCacheUserInfo(client: OAuth2Client): Promise<void> {
     }
   } catch (error) {
     console.error('Error retrieving user info:', error);
+  }
+}
+
+/**
+ * Get all available accounts that have credentials stored
+ */
+export async function getAvailableAccounts(): Promise<string[]> {
+  try {
+    const geminiDir = path.join(os.homedir(), GEMINI_DIR);
+    const files = await fs.readdir(geminiDir);
+    
+    const accounts: string[] = [];
+    
+    for (const file of files) {
+      if (file.startsWith('oauth_creds_') && file.endsWith('.json')) {
+        // Extract email from filename oauth_creds_email@domain.com.json
+        const email = file.slice(12, -5); // Remove 'oauth_creds_' and '.json'
+        const safeEmail = email.replace(/_/g, ''); // This is a basic reverse, may need improvement
+        
+        // Verify the credential file is valid
+        try {
+          const credPath = getCachedCredentialPathForAccount(email);
+          const creds = await fs.readFile(credPath, 'utf-8');
+          JSON.parse(creds); // Test if it's valid JSON
+          accounts.push(email);
+        } catch {
+          // Skip invalid credential files
+        }
+      }
+    }
+    
+    // Also check for the default credential file
+    try {
+      const defaultCredPath = getCachedCredentialPath();
+      const creds = await fs.readFile(defaultCredPath, 'utf-8');
+      JSON.parse(creds);
+      
+      // If we have a default file but no active account, we can't identify the email
+      // This is for backward compatibility
+      const currentAccount = getCachedGoogleAccount();
+      if (currentAccount && !accounts.includes(currentAccount)) {
+        accounts.push(currentAccount);
+      }
+    } catch {
+      // No default credential file or invalid
+    }
+    
+    return accounts.sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Switch to a different account
+ */
+export async function switchToAccount(email: string): Promise<boolean> {
+  try {
+    // Check if credentials exist for this account
+    const credPath = getCachedCredentialPathForAccount(email);
+    
+    try {
+      await fs.access(credPath);
+    } catch {
+      return false; // Credentials don't exist
+    }
+    
+    // Update the active account in user account management
+    const success = await switchAccountInUserFile(email);
+    
+    if (success) {
+      // Copy the account-specific credentials to the default location
+      const defaultCredPath = getCachedCredentialPath();
+      const accountCreds = await fs.readFile(credPath, 'utf-8');
+      await fs.writeFile(defaultCredPath, accountCreds);
+    }
+    
+    return success;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove an account and its credentials
+ */
+export async function removeAccount(email: string): Promise<boolean> {
+  try {
+    let removed = false;
+    
+    // Remove account-specific credential file
+    const credPath = getCachedCredentialPathForAccount(email);
+    try {
+      await fs.rm(credPath, { force: true });
+      removed = true;
+    } catch {
+      // File might not exist
+    }
+    
+    // Remove from user account list
+    const accountRemoved = await removeAccountFromList(email);
+    
+    // If this was the active account, clear the default credentials
+    const currentAccount = getCachedGoogleAccount();
+    if (currentAccount === email) {
+      await clearCachedCredentialFile();
+    }
+    
+    return removed || accountRemoved;
+  } catch {
+    return false;
   }
 }

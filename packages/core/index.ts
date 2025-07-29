@@ -10,3 +10,11 @@ export {
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from './src/config/models.js';
+
+export {
+  getOauthClient,
+  clearCachedCredentialFile,
+  getAvailableAccounts,
+  switchToAccount,
+  removeAccount,
+} from './src/code_assist/oauth2.js';

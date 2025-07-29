@@ -39,6 +39,11 @@ import {
   type SlashCommand,
 } from '../commands/types.js';
 import { CommandService } from '../../services/CommandService.js';
+import { memoryCommand } from '../commands/memoryCommand.js';
+import { themeCommand } from '../commands/themeCommand.js';
+import { helpCommand } from '../commands/helpCommand.js';
+import { clearCommand } from '../commands/clearCommand.js';
+import { authCommand } from '../commands/authCommand.js';
 
 // This interface is for the old, inline command definitions.
 // It will be removed once all commands are migrated to the new system.
@@ -215,12 +220,24 @@ export const useSlashCommandProcessor = (
     }
   }, [config]);
 
-  // Define legacy commands
-  // This list contains all commands that have NOT YET been migrated to the
-  // new system. As commands are migrated, they are removed from this list.
+  // Helper to get all new commands
+  const newCommands: SlashCommand[] = useMemo(() => [
+    helpCommand,
+    clearCommand,
+    memoryCommand,
+    themeCommand,
+    authCommand,
+  ], [
+    commandContext,
+    setShowHelp,
+    savedChatTags,
+    refreshStatic,
+  ]);
+
   const legacyCommands: LegacySlashCommand[] = useMemo(() => {
     const commands: LegacySlashCommand[] = [
       // `/help` and `/clear` have been migrated and REMOVED from this list.
+      // `/auth` has been migrated to new command structure and REMOVED from this list.
       {
         name: 'docs',
         description: 'open full Gemini CLI documentation in your browser',
@@ -241,11 +258,6 @@ export const useSlashCommandProcessor = (
             await open(docsUrl);
           }
         },
-      },
-      {
-        name: 'auth',
-        description: 'change the auth method',
-        action: (_mainCommand, _subCommand, _args) => openAuthDialog(),
       },
       {
         name: 'editor',
@@ -1072,7 +1084,7 @@ export const useSlashCommandProcessor = (
 
       // --- Start of New Tree Traversal Logic ---
 
-      let currentCommands = commands;
+      let currentCommands = newCommands;
       let commandToExecute: SlashCommand | undefined;
       let pathIndex = 0;
 
@@ -1205,7 +1217,7 @@ export const useSlashCommandProcessor = (
     [
       addItem,
       setShowHelp,
-      commands,
+      newCommands,
       legacyCommands,
       commandContext,
       addMessage,
