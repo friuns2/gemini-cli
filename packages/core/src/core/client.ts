@@ -107,11 +107,12 @@ export class GeminiClient {
     this.embeddingModel = config.getEmbeddingModel();
   }
 
-  async initialize(contentGeneratorConfig: ContentGeneratorConfig) {
+  async initialize(contentGeneratorConfig: ContentGeneratorConfig, forceNewAuth: boolean = false) {
     this.contentGenerator = await createContentGenerator(
       contentGeneratorConfig,
       this.config,
       this.config.getSessionId(),
+      forceNewAuth,
     );
     this.chat = await this.startChat();
   }

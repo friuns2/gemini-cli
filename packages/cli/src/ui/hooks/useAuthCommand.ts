@@ -54,14 +54,34 @@ export const useAuthCommand = (
   const handleAuthSelect = useCallback(
     async (authType: AuthType | undefined, scope: SettingScope) => {
       if (authType) {
-        // Only clear cached credentials if switching auth types (not Google -> Google)
-        // This allows adding multiple Google accounts without clearing existing ones
+        // For Google auth, we don't clear credentials anymore since we support multiple accounts
+        // But we do need to force new auth to add a new account
         const currentAuthType = settings.merged.selectedAuthType;
-        if (currentAuthType !== authType || authType !== AuthType.LOGIN_WITH_GOOGLE) {
+        const forceNewAuth = currentAuthType === authType && authType === AuthType.LOGIN_WITH_GOOGLE;
+        
+        // Only clear cached credentials if switching to a different auth type
+        if (currentAuthType !== authType) {
           await clearCachedCredentialFile();
         }
         
         settings.setValue(scope, 'selectedAuthType', authType);
+        
+        // Set a flag to force new auth on next refresh
+        if (forceNewAuth) {
+          // We'll use the config to signal that we want to force new auth
+          // by calling refreshAuth with forceNewAuth=true immediately
+          try {
+            setIsAuthenticating(true);
+            await config.refreshAuth(authType, true);
+            console.log(`Added new account via "${authType}".`);
+            setIsAuthenticating(false);
+          } catch (e) {
+            setAuthError(`Failed to add new account. Message: ${getErrorMessage(e)}`);
+            setIsAuthenticating(false);
+            return; // Keep dialog open on error
+          }
+        }
+        
         if (authType === AuthType.LOGIN_WITH_GOOGLE && config.getNoBrowser()) {
           runExitCleanup();
           console.log(

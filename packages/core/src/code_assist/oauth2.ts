@@ -79,6 +79,7 @@ export interface OauthWebLogin {
 export async function getOauthClient(
   authType: AuthType,
   config: Config,
+  forceNewAuth: boolean = false,
 ): Promise<OAuth2Client> {
   const client = new OAuth2Client({
     clientId: OAUTH_CLIENT_ID,
@@ -97,8 +98,8 @@ export async function getOauthClient(
     }
   });
 
-  // If there are cached creds on disk, they always take precedence
-  if (await loadCachedCredentials(client)) {
+  // If there are cached creds on disk, they always take precedence (unless forcing new auth)
+  if (!forceNewAuth && await loadCachedCredentials(client)) {
     // Found valid cached credentials.
     // Check if we need to retrieve Google Account ID or Email
     if (!getCachedGoogleAccount()) {

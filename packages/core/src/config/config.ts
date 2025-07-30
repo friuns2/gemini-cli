@@ -265,14 +265,14 @@ export class Config {
     this.toolRegistry = await this.createToolRegistry();
   }
 
-  async refreshAuth(authMethod: AuthType) {
+  async refreshAuth(authMethod: AuthType, forceNewAuth: boolean = false) {
     this.contentGeneratorConfig = await createContentGeneratorConfig(
       this.model,
       authMethod,
     );
 
     this.geminiClient = new GeminiClient(this);
-    await this.geminiClient.initialize(this.contentGeneratorConfig);
+    await this.geminiClient.initialize(this.contentGeneratorConfig, forceNewAuth);
 
     // Reset the session flag since we're explicitly changing auth and using default model
     this.modelSwitchedDuringSession = false;
