@@ -11,6 +11,8 @@ export {
   DEFAULT_GEMINI_EMBEDDING_MODEL,
 } from './src/config/models.js';
 
+export { Config } from './src/config/config.js';
+
 export {
   getOauthClient,
   clearCachedCredentialFile,

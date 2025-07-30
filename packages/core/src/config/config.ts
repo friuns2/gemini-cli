@@ -189,6 +189,8 @@ export class Config {
   private readonly _activeExtensions: ActiveExtension[];
   flashFallbackHandler?: FlashFallbackHandler;
   private quotaErrorOccurred: boolean = false;
+  private autoCycleAccounts: boolean = false;
+  private currentAccountIndex: number = 0;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -571,6 +573,58 @@ export class Config {
 
     await registry.discoverTools();
     return registry;
+  }
+
+  setAutoCycleAccounts(enabled: boolean): void {
+    this.autoCycleAccounts = enabled;
+  }
+
+  getAutoCycleAccounts(): boolean {
+    return this.autoCycleAccounts;
+  }
+
+  async cycleToNextAccount(): Promise<boolean> {
+    if (!this.autoCycleAccounts) {
+      return false;
+    }
+
+    const { listAccounts, switchAccount } = await import('../code_assist/oauth2.js');
+    
+    try {
+      const accounts = await listAccounts();
+      
+      if (accounts.length <= 1) {
+        // No cycling needed with 0 or 1 accounts
+        return false;
+      }
+
+      // Find next account index
+      this.currentAccountIndex = (this.currentAccountIndex + 1) % accounts.length;
+      const nextAccount = accounts[this.currentAccountIndex];
+      
+      // Skip if already active
+      if (nextAccount.isActive) {
+        return false;
+      }
+
+      // Switch to next account
+      const switchSuccess = await switchAccount(nextAccount.id);
+      
+      if (switchSuccess) {
+        // Refresh auth to reload with new account credentials
+        const currentAuthType = this.getContentGeneratorConfig()?.authType;
+        if (currentAuthType) {
+          await this.refreshAuth(currentAuthType);
+          console.log(`🔄 Auto-cycled to account: ${nextAccount.email}`);
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Failed to cycle accounts:', error);
+      return false;
+    }
   }
 }
 // Export model constants for use in CLI

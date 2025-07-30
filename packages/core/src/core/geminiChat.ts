@@ -276,6 +276,9 @@ export class GeminiChat {
 
     this._logApiRequest(requestContents, this.config.getModel(), prompt_id);
 
+    // Auto-cycle to next account if enabled
+    await this.config.cycleToNextAccount();
+
     const startTime = Date.now();
     let response: GenerateContentResponse;
 
@@ -383,6 +386,9 @@ export class GeminiChat {
     const userContent = createUserContent(params.message);
     const requestContents = this.getHistory(true).concat(userContent);
     this._logApiRequest(requestContents, this.config.getModel(), prompt_id);
+
+    // Auto-cycle to next account if enabled
+    await this.config.cycleToNextAccount();
 
     const startTime = Date.now();
 

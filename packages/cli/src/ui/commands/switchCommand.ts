@@ -38,10 +38,13 @@ export const switchCommand: SlashCommand = {
             })
             .join('\n');
 
+          const config = context.services.config;
+          const cycleStatus = config?.getAutoCycleAccounts() ? 'enabled' : 'disabled';
+
           context.ui.addItem(
             {
               type: MessageType.INFO,
-              text: `Available accounts:\n${accountsList}\n\nUse /switch <number> to switch accounts.`,
+              text: `Available accounts:\n${accountsList}\n\nAuto-cycling: ${cycleStatus}\n\nUse /switch <number> to switch accounts or /switch cycle to toggle auto-cycling.`,
             },
             Date.now(),
           );
@@ -57,20 +60,65 @@ export const switchCommand: SlashCommand = {
         }
       },
     },
+    {
+      name: 'cycle',
+      description: 'Toggle automatic account cycling for each message.',
+      action: async (context) => {
+        try {
+          const config = context.services.config;
+          if (!config) {
+            context.ui.addItem(
+              {
+                type: MessageType.ERROR,
+                text: 'Config not available.',
+              },
+              Date.now(),
+            );
+            return;
+          }
+
+          const currentStatus = config.getAutoCycleAccounts();
+          const newStatus = !currentStatus;
+          config.setAutoCycleAccounts(newStatus);
+
+          const statusText = newStatus ? 'enabled' : 'disabled';
+          const description = newStatus 
+            ? 'Each message will automatically use the next account in rotation.' 
+            : 'Manual account switching only.';
+
+          context.ui.addItem(
+            {
+              type: MessageType.INFO,
+              text: `Auto-cycling ${statusText}. ${description}`,
+            },
+            Date.now(),
+          );
+        } catch (error) {
+          const errorMessage = getErrorMessage(error);
+          context.ui.addItem(
+            {
+              type: MessageType.ERROR,
+              text: `Error toggling auto-cycle: ${errorMessage}`,
+            },
+            Date.now(),
+          );
+        }
+      },
+    },
   ],
   action: async (context, args): Promise<SlashCommandActionReturn | void> => {
     if (!args || args.trim() === '') {
       return {
         type: 'message',
         messageType: 'error',
-        content: 'Usage: /switch <account_number> or /switch list',
+        content: 'Usage: /switch <account_number>, /switch list, or /switch cycle',
       };
     }
 
     const argsTrimmed = args.trim();
     
-    // If it's 'list', handle it via subcommand
-    if (argsTrimmed === 'list') {
+    // If it's 'list' or 'cycle', handle it via subcommand
+    if (argsTrimmed === 'list' || argsTrimmed === 'cycle') {
       return;
     }
 

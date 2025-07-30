@@ -272,6 +272,9 @@ export class GeminiClient {
     turns: number = this.MAX_TURNS,
     originalModel?: string,
   ): AsyncGenerator<ServerGeminiStreamEvent, Turn> {
+    // Auto-cycle to next account if enabled  
+    await this.config.cycleToNextAccount();
+
     this.sessionTurnCount++;
     if (
       this.config.getMaxSessionTurns() > 0 &&
@@ -336,6 +339,9 @@ export class GeminiClient {
     model?: string,
     config: GenerateContentConfig = {},
   ): Promise<Record<string, unknown>> {
+    // Auto-cycle to next account if enabled
+    await this.config.cycleToNextAccount();
+
     // Use current model from config instead of hardcoded Flash model
     const modelToUse =
       model || this.config.getModel() || DEFAULT_GEMINI_FLASH_MODEL;
@@ -426,6 +432,9 @@ export class GeminiClient {
     abortSignal: AbortSignal,
     model?: string,
   ): Promise<GenerateContentResponse> {
+    // Auto-cycle to next account if enabled
+    await this.config.cycleToNextAccount();
+
     const modelToUse = model ?? this.config.getModel();
     const configToUse: GenerateContentConfig = {
       ...this.generateContentConfig,
