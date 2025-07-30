@@ -54,7 +54,13 @@ export const useAuthCommand = (
   const handleAuthSelect = useCallback(
     async (authType: AuthType | undefined, scope: SettingScope) => {
       if (authType) {
-        await clearCachedCredentialFile();
+        // Only clear cached credentials if switching auth types (not Google -> Google)
+        // This allows adding multiple Google accounts without clearing existing ones
+        const currentAuthType = settings.merged.selectedAuthType;
+        if (currentAuthType !== authType || authType !== AuthType.LOGIN_WITH_GOOGLE) {
+          await clearCachedCredentialFile();
+        }
+        
         settings.setValue(scope, 'selectedAuthType', authType);
         if (authType === AuthType.LOGIN_WITH_GOOGLE && config.getNoBrowser()) {
           runExitCleanup();

@@ -24,9 +24,6 @@ import {
   cacheGoogleAccount,
   getCachedGoogleAccount,
   clearCachedGoogleAccount,
-  getAllAvailableAccounts,
-  switchToAccount as switchAccountInUserFile,
-  removeAccountFromList,
 } from '../utils/user_account.js';
 import { AuthType } from '../core/contentGenerator.js';
 import readline from 'node:readline';
@@ -59,6 +56,16 @@ const SIGN_IN_FAILURE_URL =
 const GEMINI_DIR = '.gemini';
 const CREDENTIAL_FILENAME = 'oauth_creds.json';
 
+// Structure for storing multiple accounts
+interface MultiAccountCredentials {
+  activeAccountId: string | null;
+  accounts: Record<string, {
+    credentials: Credentials;
+    email: string;
+    name?: string;
+  }>;
+}
+
 /**
  * An Authentication URL for updating the credentials of a Oauth2Client
  * as well as a promise that will resolve when the credentials have
@@ -79,7 +86,15 @@ export async function getOauthClient(
   });
 
   client.on('tokens', async (tokens: Credentials) => {
-    await cacheCredentials(tokens);
+    // Get user info for the new tokens
+    try {
+      const userInfo = await getUserInfoFromCredentials(tokens);
+      await cacheCredentials(tokens, userInfo.email, userInfo.name);
+    } catch (error) {
+      console.error('Failed to get user info for tokens:', error);
+      // Fallback to caching without user info (will try to fetch it later)
+      await cacheCredentials(tokens);
+    }
   });
 
   // If there are cached creds on disk, they always take precedence
@@ -176,7 +191,7 @@ async function authWithUserCode(client: OAuth2Client): Promise<boolean> {
       input: process.stdin,
       output: process.stdout,
     });
-    rl.question('Enter the authorization code: ', (code: string) => {
+    rl.question('Enter the authorization code: ', (code) => {
       rl.close();
       resolve(code.trim());
     });
@@ -212,7 +227,7 @@ async function authWithWeb(client: OAuth2Client): Promise<OauthWebLogin> {
   });
 
   const loginCompletePromise = new Promise<void>((resolve, reject) => {
-    const server = http.createServer(async (req: any, res: any) => {
+    const server = http.createServer(async (req, res) => {
       try {
         if (req.url!.indexOf('/oauth2callback') === -1) {
           res.writeHead(HTTP_REDIRECT, { Location: SIGN_IN_FAILURE_URL });
@@ -239,6 +254,9 @@ async function authWithWeb(client: OAuth2Client): Promise<OauthWebLogin> {
           // Retrieve and cache Google Account ID during authentication
           try {
             await fetchAndCacheUserInfo(client);
+            // Also update multi-account credentials with user info
+            const userInfo = await getUserInfoFromCredentials(client.credentials);
+            await cacheCredentials(client.credentials, userInfo.email, userInfo.name);
           } catch (error) {
             console.error(
               'Failed to retrieve Google Account ID during authentication:',
@@ -281,7 +299,7 @@ export function getAvailablePort(): Promise<number> {
         server.close();
         server.unref();
       });
-      server.on('error', (e: any) => reject(e));
+      server.on('error', (e) => reject(e));
       server.on('close', () => resolve(port));
     } catch (e) {
       reject(e);
@@ -294,44 +312,196 @@ async function loadCachedCredentials(client: OAuth2Client): Promise<boolean> {
     const keyFile =
       process.env.GOOGLE_APPLICATION_CREDENTIALS || getCachedCredentialPath();
 
-    const creds = await fs.readFile(keyFile, 'utf-8');
-    client.setCredentials(JSON.parse(creds));
+    const fileContent = await fs.readFile(keyFile, 'utf-8');
+    
+    // Try to parse as multi-account format first
+    try {
+      const multiAccountData: MultiAccountCredentials = JSON.parse(fileContent);
+      if (multiAccountData.activeAccountId && multiAccountData.accounts) {
+        const activeAccount = multiAccountData.accounts[multiAccountData.activeAccountId];
+        if (activeAccount) {
+          client.setCredentials(activeAccount.credentials);
+          
+          // This will verify locally that the credentials look good.
+          const { token } = await client.getAccessToken();
+          if (!token) {
+            return false;
+          }
 
-    // This will verify locally that the credentials look good.
-    const { token } = await client.getAccessToken();
-    if (!token) {
-      return false;
+          // This will check with the server to see if it hasn't been revoked.
+          await client.getTokenInfo(token);
+
+          return true;
+        }
+      }
+    } catch (parseError) {
+      // If multi-account parsing fails, try legacy single-account format
+      const legacyCredentials: Credentials = JSON.parse(fileContent);
+      
+      // Migrate legacy format to multi-account format
+      const userInfo = await getUserInfoFromCredentials(legacyCredentials);
+      const accountId = generateAccountId(userInfo.email);
+      
+      const multiAccountData: MultiAccountCredentials = {
+        activeAccountId: accountId,
+        accounts: {
+          [accountId]: {
+            credentials: legacyCredentials,
+            email: userInfo.email,
+            name: userInfo.name
+          }
+        }
+      };
+      
+      // Save migrated format
+      await saveMuliAccountCredentials(multiAccountData);
+      
+      client.setCredentials(legacyCredentials);
+      
+      // This will verify locally that the credentials look good.
+      const { token } = await client.getAccessToken();
+      if (!token) {
+        return false;
+      }
+
+      // This will check with the server to see if it hasn't been revoked.
+      await client.getTokenInfo(token);
+
+      return true;
     }
-
-    // This will check with the server to see if it hasn't been revoked.
-    await client.getTokenInfo(token);
-
-    return true;
+    
+    return false;
   } catch (_) {
     return false;
   }
 }
 
-async function cacheCredentials(credentials: Credentials) {
-  const currentAccount = getCachedGoogleAccount();
-  const filePath = currentAccount 
-    ? getCachedCredentialPathForAccount(currentAccount)
-    : getCachedCredentialPath();
-    
+async function cacheCredentials(credentials: Credentials, email?: string, name?: string) {
+  const filePath = getCachedCredentialPath();
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-  const credString = JSON.stringify(credentials, null, 2);
+  // Load existing multi-account data or create new
+  let multiAccountData: MultiAccountCredentials;
+  try {
+    const existingContent = await fs.readFile(filePath, 'utf-8');
+    multiAccountData = JSON.parse(existingContent);
+  } catch {
+    multiAccountData = {
+      activeAccountId: null,
+      accounts: {}
+    };
+  }
+
+  // If email not provided, try to get it from the credentials
+  if (!email) {
+    try {
+      const userInfo = await getUserInfoFromCredentials(credentials);
+      email = userInfo.email;
+      name = userInfo.name;
+    } catch (error) {
+      console.error('Failed to get user info from credentials:', error);
+      throw new Error('Email is required to cache credentials');
+    }
+  }
+
+  const accountId = generateAccountId(email);
+  
+  // Add or update account
+  multiAccountData.accounts[accountId] = {
+    credentials,
+    email,
+    name
+  };
+  
+  // Set as active account
+  multiAccountData.activeAccountId = accountId;
+  
+  await saveMuliAccountCredentials(multiAccountData);
+}
+
+async function saveMuliAccountCredentials(data: MultiAccountCredentials) {
+  const filePath = getCachedCredentialPath();
+  const credString = JSON.stringify(data, null, 2);
   await fs.writeFile(filePath, credString);
+}
+
+function generateAccountId(email: string): string {
+  return email.toLowerCase().replace(/[^a-z0-9@.-]/g, '_');
+}
+
+async function getUserInfoFromCredentials(credentials: Credentials): Promise<{ email: string; name?: string }> {
+  const client = new OAuth2Client({
+    clientId: OAUTH_CLIENT_ID,
+    clientSecret: OAUTH_CLIENT_SECRET,
+  });
+  client.setCredentials(credentials);
+  
+  const { token } = await client.getAccessToken();
+  if (!token) {
+    throw new Error('No access token available');
+  }
+
+  const response = await fetch(
+    'https://www.googleapis.com/oauth2/v2/userinfo',
+    {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user info: ${response.statusText}`);
+  }
+
+  const userInfo = await response.json();
+  return {
+    email: userInfo.email,
+    name: userInfo.name
+  };
+}
+
+export async function listAccounts(): Promise<Array<{ id: string; email: string; name?: string; isActive: boolean }>> {
+  try {
+    const filePath = getCachedCredentialPath();
+    const fileContent = await fs.readFile(filePath, 'utf-8');
+    const multiAccountData: MultiAccountCredentials = JSON.parse(fileContent);
+    
+    return Object.entries(multiAccountData.accounts).map(([id, account]) => ({
+      id,
+      email: account.email,
+      name: account.name,
+      isActive: id === multiAccountData.activeAccountId
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function switchAccount(accountId: string): Promise<boolean> {
+  try {
+    const filePath = getCachedCredentialPath();
+    const fileContent = await fs.readFile(filePath, 'utf-8');
+    const multiAccountData: MultiAccountCredentials = JSON.parse(fileContent);
+    
+    if (!multiAccountData.accounts[accountId]) {
+      return false;
+    }
+    
+    multiAccountData.activeAccountId = accountId;
+    await saveMuliAccountCredentials(multiAccountData);
+    
+    // Update cached Google account for consistency
+    await cacheGoogleAccount(multiAccountData.accounts[accountId].email);
+    
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getCachedCredentialPath(): string {
   return path.join(os.homedir(), GEMINI_DIR, CREDENTIAL_FILENAME);
-}
-
-function getCachedCredentialPathForAccount(email: string): string {
-  // Create a safe filename from email
-  const safeEmail = email.replace(/[^a-zA-Z0-9@.-]/g, '_');
-  return path.join(os.homedir(), GEMINI_DIR, `oauth_creds_${safeEmail}.json`);
 }
 
 export async function clearCachedCredentialFile() {
@@ -378,113 +548,15 @@ async function fetchAndCacheUserInfo(client: OAuth2Client): Promise<void> {
   }
 }
 
-/**
- * Get all available accounts that have credentials stored
- */
-export async function getAvailableAccounts(): Promise<string[]> {
+export async function refreshOAuthClient(client: OAuth2Client): Promise<boolean> {
   try {
-    const geminiDir = path.join(os.homedir(), GEMINI_DIR);
-    const files = await fs.readdir(geminiDir);
+    // Clear any existing credentials
+    client.setCredentials({});
     
-    const accounts: string[] = [];
-    
-    for (const file of files) {
-      if (file.startsWith('oauth_creds_') && file.endsWith('.json')) {
-        // Extract email from filename oauth_creds_email@domain.com.json
-        const email = file.slice(12, -5); // Remove 'oauth_creds_' and '.json'
-        const safeEmail = email.replace(/_/g, ''); // This is a basic reverse, may need improvement
-        
-        // Verify the credential file is valid
-        try {
-          const credPath = getCachedCredentialPathForAccount(email);
-          const creds = await fs.readFile(credPath, 'utf-8');
-          JSON.parse(creds); // Test if it's valid JSON
-          accounts.push(email);
-        } catch {
-          // Skip invalid credential files
-        }
-      }
-    }
-    
-    // Also check for the default credential file
-    try {
-      const defaultCredPath = getCachedCredentialPath();
-      const creds = await fs.readFile(defaultCredPath, 'utf-8');
-      JSON.parse(creds);
-      
-      // If we have a default file but no active account, we can't identify the email
-      // This is for backward compatibility
-      const currentAccount = getCachedGoogleAccount();
-      if (currentAccount && !accounts.includes(currentAccount)) {
-        accounts.push(currentAccount);
-      }
-    } catch {
-      // No default credential file or invalid
-    }
-    
-    return accounts.sort();
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Switch to a different account
- */
-export async function switchToAccount(email: string): Promise<boolean> {
-  try {
-    // Check if credentials exist for this account
-    const credPath = getCachedCredentialPathForAccount(email);
-    
-    try {
-      await fs.access(credPath);
-    } catch {
-      return false; // Credentials don't exist
-    }
-    
-    // Update the active account in user account management
-    const success = await switchAccountInUserFile(email);
-    
-    if (success) {
-      // Copy the account-specific credentials to the default location
-      const defaultCredPath = getCachedCredentialPath();
-      const accountCreds = await fs.readFile(credPath, 'utf-8');
-      await fs.writeFile(defaultCredPath, accountCreds);
-    }
-    
-    return success;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Remove an account and its credentials
- */
-export async function removeAccount(email: string): Promise<boolean> {
-  try {
-    let removed = false;
-    
-    // Remove account-specific credential file
-    const credPath = getCachedCredentialPathForAccount(email);
-    try {
-      await fs.rm(credPath, { force: true });
-      removed = true;
-    } catch {
-      // File might not exist
-    }
-    
-    // Remove from user account list
-    const accountRemoved = await removeAccountFromList(email);
-    
-    // If this was the active account, clear the default credentials
-    const currentAccount = getCachedGoogleAccount();
-    if (currentAccount === email) {
-      await clearCachedCredentialFile();
-    }
-    
-    return removed || accountRemoved;
-  } catch {
+    // Load fresh credentials from disk
+    return await loadCachedCredentials(client);
+  } catch (error) {
+    console.error('Failed to refresh OAuth client:', error);
     return false;
   }
 }

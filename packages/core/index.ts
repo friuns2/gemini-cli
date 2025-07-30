@@ -14,7 +14,6 @@ export {
 export {
   getOauthClient,
   clearCachedCredentialFile,
-  getAvailableAccounts,
-  switchToAccount,
-  removeAccount,
+  listAccounts,
+  switchAccount,
 } from './src/code_assist/oauth2.js';
