@@ -367,8 +367,9 @@ export class GeminiClient {
         });
 
       const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
+        // COMMENTED OUT: onPersistent429 callback to prevent Flash fallback
+        // onPersistent429: async (authType?: string, error?: unknown) =>
+        //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
       });
 
@@ -459,8 +460,9 @@ export class GeminiClient {
         });
 
       const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
+        // COMMENTED OUT: onPersistent429 callback to prevent Flash fallback
+        // onPersistent429: async (authType?: string, error?: unknown) =>
+        //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
       });
       return result;
@@ -611,6 +613,8 @@ export class GeminiClient {
    * Handles fallback to Flash model when persistent 429 errors occur for OAuth users.
    * Uses a fallback handler if provided by the config, otherwise returns null.
    */
+  /*
+  // COMMENTED OUT: handleFlashFallback method to keep Pro model
   private async handleFlashFallback(
     authType?: string,
     error?: unknown,
@@ -652,4 +656,5 @@ export class GeminiClient {
 
     return null;
   }
+  */
 }

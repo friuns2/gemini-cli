@@ -94,6 +94,8 @@ export async function retryWithBackoff<T>(
       const errorStatus = getErrorStatus(error);
 
       // Check for Pro quota exceeded error first - immediate fallback for OAuth users
+      /*
+      // COMMENTED OUT: Flash fallback for Pro quota exceeded to keep Pro model
       if (
         errorStatus === 429 &&
         authType === AuthType.LOGIN_WITH_GOOGLE &&
@@ -118,8 +120,11 @@ export async function retryWithBackoff<T>(
           console.warn('Fallback to Flash model failed:', fallbackError);
         }
       }
+      */
 
       // Check for generic quota exceeded error (but not Pro, which was handled above) - immediate fallback for OAuth users
+      /*
+      // COMMENTED OUT: Flash fallback for generic quota exceeded to keep Pro model  
       if (
         errorStatus === 429 &&
         authType === AuthType.LOGIN_WITH_GOOGLE &&
@@ -145,6 +150,7 @@ export async function retryWithBackoff<T>(
           console.warn('Fallback to Flash model failed:', fallbackError);
         }
       }
+      */
 
       // Track consecutive 429 errors
       if (errorStatus === 429) {
@@ -154,6 +160,8 @@ export async function retryWithBackoff<T>(
       }
 
       // If we have persistent 429s and a fallback callback for OAuth
+      /*
+      // COMMENTED OUT: Flash fallback for consecutive 429s to keep Pro model
       if (
         consecutive429Count >= 2 &&
         onPersistent429 &&
@@ -177,6 +185,7 @@ export async function retryWithBackoff<T>(
           console.warn('Fallback to Flash model failed:', fallbackError);
         }
       }
+      */
 
       // Check if we've exhausted retries or shouldn't retry
       if (attempt >= maxAttempts || !shouldRetry(error as Error)) {

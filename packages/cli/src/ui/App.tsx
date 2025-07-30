@@ -287,6 +287,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
 
   // Set up Flash fallback handler
   useEffect(() => {
+    /*
+    // COMMENTED OUT: Flash fallback handler to keep Pro model
     const flashFallbackHandler = async (
       currentModel: string,
       fallbackModel: string,
@@ -313,11 +315,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
         }
       } else if (error && isGenericQuotaExceededError(error)) {
         if (isPaidTier) {
-          message = `⚡ You have reached your daily quota limit.
-⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
-⚡ To continue accessing the ${currentModel} model today, consider using /auth to switch to using a paid API key from AI Studio at https://aistudio.google.com/apikey`;
-        } else {
-          message = `⚡ You have reached your daily quota limit.
+          message =
+            `⚡ You have reached your daily ${currentModel} quota limit.
 ⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
 ⚡ To increase your limits, upgrade to a Gemini Code Assist Standard or Enterprise plan with higher limits at https://goo.gle/set-up-gemini-code-assist
 ⚡ Or you can utilize a Gemini API Key. See: https://goo.gle/gemini-cli-docs-auth#gemini-api-key
@@ -362,6 +361,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     };
 
     config.setFlashFallbackHandler(flashFallbackHandler);
+    */
   }, [config, addItem, userTier]);
 
   const {

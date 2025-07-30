@@ -204,6 +204,8 @@ export class GeminiChat {
    * Handles fallback to Flash model when persistent 429 errors occur for OAuth users.
    * Uses a fallback handler if provided by the config, otherwise returns null.
    */
+  /*
+  // COMMENTED OUT: handleFlashFallback method to keep Pro model
   private async handleFlashFallback(
     authType?: string,
     error?: unknown,
@@ -245,6 +247,7 @@ export class GeminiChat {
 
     return null;
   }
+  */
 
   /**
    * Sends a message to the model and returns the response.
@@ -311,8 +314,9 @@ export class GeminiChat {
           }
           return false;
         },
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
+        // COMMENTED OUT: onPersistent429 callback to prevent Flash fallback
+        // onPersistent429: async (authType?: string, error?: unknown) =>
+        //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
       });
       const durationMs = Date.now() - startTime;
@@ -426,8 +430,9 @@ export class GeminiChat {
           }
           return false; // Don't retry other errors by default
         },
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
+        // COMMENTED OUT: onPersistent429 callback to prevent Flash fallback
+        // onPersistent429: async (authType?: string, error?: unknown) =>
+        //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
       });
 

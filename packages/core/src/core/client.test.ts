@@ -935,6 +935,8 @@ describe('Gemini Client (client.ts)', () => {
     });
   });
 
+  /*
+  // COMMENTED OUT: handleFlashFallback test since method is commented out
   describe('handleFlashFallback', () => {
     it('should use current model from config when checking for fallback', async () => {
       const initialModel = client['config'].getModel();
@@ -961,4 +963,5 @@ describe('Gemini Client (client.ts)', () => {
       );
     });
   });
+  */
 });
