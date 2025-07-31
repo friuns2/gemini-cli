@@ -80,6 +80,7 @@ import ansiEscapes from 'ansi-escapes';
 import { OverflowProvider } from './contexts/OverflowContext.js';
 import { ShowMoreLines } from './components/ShowMoreLines.js';
 import { PrivacyNotice } from './privacy/PrivacyNotice.js';
+import { WebApiServer } from '../webApiServer.js';
 
 const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
 
@@ -540,6 +541,43 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
 
   const logger = useLogger();
   const [userMessages, setUserMessages] = useState<string[]>([]);
+  const [webApiServer, setWebApiServer] = useState<WebApiServer | null>(null);
+
+  // Start web API server in parallel with interactive mode
+  useEffect(() => {
+    const startWebServer = async () => {
+      try {
+        const server = new WebApiServer({
+          port: 3001,
+          onMessage: (message: string) => {
+            // Inject message into the interactive session
+            console.log(`📨 API message received: ${message}`);
+            submitQuery(message);
+          },
+          config,
+        });
+        
+        await server.start();
+        setWebApiServer(server);
+        
+        // Cleanup on unmount
+        registerCleanup(() => {
+          server.stop();
+        });
+      } catch (error) {
+        console.error('Failed to start web API server:', error);
+      }
+    };
+
+    // Start the web server
+    startWebServer();
+
+    return () => {
+      if (webApiServer) {
+        webApiServer.stop();
+      }
+    };
+  }, [submitQuery, config]); // Depend on submitQuery so server starts when it's ready
 
   useEffect(() => {
     const fetchUserMessages = async () => {

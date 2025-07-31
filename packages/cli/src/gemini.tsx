@@ -40,7 +40,6 @@ import {
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from './config/auth.js';
 import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
-import { WebServer } from './webServer.js';
 
 function getNodeMemoryArgs(config: Config): string[] {
   const totalMemoryMB = os.totalmem() / (1024 * 1024);
@@ -188,44 +187,6 @@ export async function main() {
   ) {
     // Do oauth before app renders to make copying the link possible.
     await getOauthClient(settings.merged.selectedAuthType, config);
-  }
-
-  // Check if web server mode is enabled
-  if (argv.web) {
-    const port = argv.webPort || 8080;
-    console.log(`Starting Gemini CLI in web server mode...`);
-    
-    const webServer = new WebServer({
-      port,
-      config,
-      settings,
-      extensions,
-      argv,
-    });
-    
-    try {
-      await webServer.start();
-      
-      // Handle graceful shutdown
-      process.on('SIGINT', async () => {
-        console.log('\nShutting down web server...');
-        await webServer.stop();
-        process.exit(0);
-      });
-      
-      process.on('SIGTERM', async () => {
-        console.log('\nShutting down web server...');
-        await webServer.stop();
-        process.exit(0);
-      });
-      
-      // Keep the process running
-      await new Promise(() => {}); // This will keep the process alive
-    } catch (error) {
-      console.error('Failed to start web server:', error);
-      process.exit(1);
-    }
-    return;
   }
 
   let input = config.getQuestion();
