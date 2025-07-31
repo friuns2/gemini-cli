@@ -9,6 +9,7 @@ import {
   isProQuotaExceededError,
   isGenericQuotaExceededError,
 } from './quotaErrorDetection.js';
+import type { Config } from '../config/config.js';
 
 export interface RetryOptions {
   maxAttempts: number;
@@ -20,6 +21,7 @@ export interface RetryOptions {
     error?: unknown,
   ) => Promise<string | boolean | null>;
   authType?: string;
+  config?: Config; // Add config parameter for account switching
 }
 
 const DEFAULT_RETRY_OPTIONS: RetryOptions = {
@@ -77,6 +79,7 @@ export async function retryWithBackoff<T>(
     onPersistent429,
     authType,
     shouldRetry,
+    config,
   } = {
     ...DEFAULT_RETRY_OPTIONS,
     ...options,
@@ -85,6 +88,7 @@ export async function retryWithBackoff<T>(
   let attempt = 0;
   let currentDelay = initialDelayMs;
   let consecutive429Count = 0;
+  let accountsTriedCount = 0;
 
   while (attempt < maxAttempts) {
     attempt++;
@@ -93,9 +97,35 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       const errorStatus = getErrorStatus(error);
 
-      // Check for Pro quota exceeded error first - immediate fallback for OAuth users
+      // MODIFIED: Try account switching on any API error for OAuth users
+      if (
+        authType === AuthType.LOGIN_WITH_GOOGLE &&
+        (errorStatus === 429 || errorStatus === 403 || errorStatus === 500 || errorStatus === 502 || errorStatus === 503 || errorStatus === 504)
+      ) {
+        // Try to switch accounts using the passed config
+        if (config && accountsTriedCount < 5) { // Limit to 5 account switches to prevent infinite loops
+          const switchedSuccessfully = await config.cycleAccountOnError();
+          
+          if (switchedSuccessfully) {
+            console.log(`🔄 Retrying with new account after API error (${errorStatus})`);
+            accountsTriedCount++;
+            // Reset attempt counter and consecutive errors since we're trying a new account
+            attempt = 0;
+            consecutive429Count = 0;
+            currentDelay = initialDelayMs;
+            continue;
+          } else {
+            console.warn(`⚠️ Failed to switch accounts or no more accounts available`);
+            accountsTriedCount++;
+          }
+        } else if (!config) {
+          console.warn('⚠️ Config not available for account switching');
+        }
+      }
+
+      // COMMENTED OUT: Original Flash fallback logic is disabled
       /*
-      // COMMENTED OUT: Flash fallback for Pro quota exceeded to keep Pro model
+      // Check for Pro quota exceeded error first - immediate fallback for OAuth users
       if (
         errorStatus === 429 &&
         authType === AuthType.LOGIN_WITH_GOOGLE &&
@@ -122,9 +152,9 @@ export async function retryWithBackoff<T>(
       }
       */
 
-      // Check for generic quota exceeded error (but not Pro, which was handled above) - immediate fallback for OAuth users
+      // COMMENTED OUT: Generic quota exceeded error fallback
       /*
-      // COMMENTED OUT: Flash fallback for generic quota exceeded to keep Pro model  
+      // Check for generic quota exceeded error (but not Pro, which was handled above) - immediate fallback for OAuth users
       if (
         errorStatus === 429 &&
         authType === AuthType.LOGIN_WITH_GOOGLE &&
@@ -159,9 +189,9 @@ export async function retryWithBackoff<T>(
         consecutive429Count = 0;
       }
 
-      // If we have persistent 429s and a fallback callback for OAuth
+      // COMMENTED OUT: Consecutive 429 fallback logic
       /*
-      // COMMENTED OUT: Flash fallback for consecutive 429s to keep Pro model
+      // If we have persistent 429s and a fallback callback for OAuth
       if (
         consecutive429Count >= 2 &&
         onPersistent429 &&
@@ -205,13 +235,15 @@ export async function retryWithBackoff<T>(
         // Reset currentDelay for next potential non-429 error, or if Retry-After is not present next time
         currentDelay = initialDelayMs;
       } else {
-        // Fallback to exponential backoff with jitter
-        logRetryAttempt(attempt, error, errorStatus);
-        // Add jitter: +/- 30% of currentDelay
-        const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
-        const delayWithJitter = Math.max(0, currentDelay + jitter);
-        await delay(delayWithJitter);
-        currentDelay = Math.min(maxDelayMs, currentDelay * 2);
+        // Fallback to exponential backoff with jitter (only if account switching didn't work)
+        if (accountsTriedCount === 0 || errorStatus !== 429) {
+          logRetryAttempt(attempt, error, errorStatus);
+          // Add jitter: +/- 30% of currentDelay
+          const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
+          const delayWithJitter = Math.max(0, currentDelay + jitter);
+          await delay(delayWithJitter);
+          currentDelay = Math.min(maxDelayMs, currentDelay * 2);
+        }
       }
     }
   }

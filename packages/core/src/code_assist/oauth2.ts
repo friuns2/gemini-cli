@@ -54,7 +54,7 @@ const SIGN_IN_FAILURE_URL =
   'https://developers.google.com/gemini-code-assist/auth_failure_gemini';
 
 const GEMINI_DIR = '.gemini';
-const CREDENTIAL_FILENAME = 'oauth_creds.json';
+const CREDENTIAL_FILENAME = 'oauth_creds25.json';
 
 // Structure for storing multiple accounts
 interface MultiAccountCredentials {

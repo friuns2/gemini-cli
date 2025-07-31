@@ -318,6 +318,7 @@ export class GeminiChat {
         // onPersistent429: async (authType?: string, error?: unknown) =>
         //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        config: this.config, // Add config for account switching
       });
       const durationMs = Date.now() - startTime;
       await this._logApiResponse(
@@ -423,7 +424,6 @@ export class GeminiChat {
       // If errors occur mid-stream, this setup won't resume the stream; it will restart it.
       const streamResponse = await retryWithBackoff(apiCall, {
         shouldRetry: (error: Error) => {
-          // Check error messages for status codes, or specific error names if known
           if (error && error.message) {
             if (error.message.includes('429')) return true;
             if (error.message.match(/5\d{2}/)) return true;
@@ -434,6 +434,7 @@ export class GeminiChat {
         // onPersistent429: async (authType?: string, error?: unknown) =>
         //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        config: this.config, // Add config for account switching
       });
 
       // Resolve the internal tracking of send completion promise - `sendPromise`

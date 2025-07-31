@@ -371,6 +371,7 @@ export class GeminiClient {
         // onPersistent429: async (authType?: string, error?: unknown) =>
         //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        config: this.config, // Add config for account switching
       });
 
       const text = getResponseText(result);
@@ -464,6 +465,7 @@ export class GeminiClient {
         // onPersistent429: async (authType?: string, error?: unknown) =>
         //   await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        config: this.config, // Add config for account switching
       });
       return result;
     } catch (error: unknown) {

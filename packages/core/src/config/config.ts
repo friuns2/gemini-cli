@@ -626,6 +626,54 @@ export class Config {
       return false;
     }
   }
+
+  /**
+   * Attempts to cycle to the next account on API errors.
+   * This method enables auto-cycling temporarily and tries to switch accounts.
+   */
+  async cycleAccountOnError(): Promise<boolean> {
+    const { listAccounts, switchAccount } = await import('../code_assist/oauth2.js');
+    
+    try {
+      const accounts = await listAccounts();
+      
+      if (accounts.length <= 1) {
+        // No cycling possible with 0 or 1 accounts
+        console.warn('🔄 Cannot cycle accounts: Only one account available');
+        return false;
+      }
+
+      // Find next account index
+      this.currentAccountIndex = (this.currentAccountIndex + 1) % accounts.length;
+      const nextAccount = accounts[this.currentAccountIndex];
+      
+      // If we've cycled back to the same account, reset index and return false
+      if (nextAccount.isActive) {
+        console.warn('🔄 Account cycling completed full cycle, all accounts tried');
+        return false;
+      }
+
+      console.log(`🔄 Switching to next account due to API error: ${nextAccount.email}`);
+
+      // Switch to next account
+      const switchSuccess = await switchAccount(nextAccount.id);
+      
+      if (switchSuccess) {
+        // Refresh auth to reload with new account credentials
+        const currentAuthType = this.getContentGeneratorConfig()?.authType;
+        if (currentAuthType) {
+          await this.refreshAuth(currentAuthType);
+          console.log(`✅ Successfully switched to account: ${nextAccount.email}`);
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('❌ Failed to cycle accounts on error:', error);
+      return false;
+    }
+  }
 }
 // Export model constants for use in CLI
 export { DEFAULT_GEMINI_FLASH_MODEL };
