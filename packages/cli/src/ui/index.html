@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini CLI Web API</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f0f0f0; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #0056b3; text-align: center; margin-bottom: 20px; }
+        .input-group { display: flex; margin-bottom: 15px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px 0 0 4px; font-size: 16px; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 0 4px 4px 0; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        #response { margin-top: 20px; padding: 10px; border: 1px solid #eee; background-color: #f9f9f9; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+        .message-log { margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px; }
+        .log-entry { margin-bottom: 5px; color: #555; font-size: 0.9em; }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gemini CLI Web API Interface</h1>
+        <p>Send messages to the interactive Gemini CLI session.</p>
+        <div class="input-group">
+            <input type="text" id="messageInput" placeholder="Type your message here..." autofocus>
+            <button onclick="sendMessage()">Send Message</button>
+        </div>
+        <div id="response"></div>
+        <div class="message-log" id="messageLog">
+            <h2>Activity Log</h2>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin; // Dynamically set base URL
+
+        function logActivity(message, type = 'info') {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            if (type === 'success') {
+                logEntry.classList.add('log-success');
+            } else if (type === 'error') {
+                logEntry.classList.add('log-error');
+            }
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            const messageLog = document.getElementById('messageLog');
+            messageLog.insertBefore(logEntry, messageLog.children[1]); // Insert after h2
+        }
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            const responseDiv = document.getElementById('response');
+            responseDiv.textContent = ''; // Clear previous response
+
+            if (!message) {
+                responseDiv.textContent = 'Please enter a message.';
+                logActivity('Attempted to send empty message.', 'error');
+                return;
+            }
+
+            logActivity(`Sending: "${message}"...`);
+            messageInput.value = ''; // Clear input field
+
+            try {
+                const url = `${API_BASE_URL}/?msg=${encodeURIComponent(message)}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    responseDiv.textContent = `Success: ${data.message}`;
+                    logActivity(`Successfully sent: "${message}".`, 'success');
+                } else {
+                    responseDiv.textContent = `Error: ${data.error || 'Unknown error'}. ${data.details || ''}`;
+                    logActivity(`Failed to send: "${message}". Error: ${data.error || 'Unknown'}`, 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Network error: ${error.message}`;
+                logActivity(`Network error sending: "${message}". Details: ${error.message}`, 'error');
+                console.error('Fetch error:', error);
+            }
+        }
+
+        // Allow sending message with Enter key
+        document.getElementById('messageInput').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Initial check for server status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/status`);
+                const data = await response.json();
+                if (data.status === 'running') {
+                    logActivity(`Web API server is running on port ${data.port}.`, 'success');
+                } else {
+                    logActivity('Web API server status: ' + (data.status || 'unknown'), 'info');
+                }
+            } catch (error) {
+                logActivity('Could not connect to Web API server. Is the CLI running?', 'error');
+                console.error('Status check error:', error);
+            }
+        }
+
+        window.onload = checkServerStatus;
+    </script>
+</body>
+</html> 

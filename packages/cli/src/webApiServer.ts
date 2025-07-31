@@ -7,6 +7,10 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { URL } from 'url';
 import { Config } from '@google/gemini-cli-core';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+const HTML_FILE_PATH = path.join(__dirname, '..' , 'ui', 'index.html');
 
 export interface WebApiServerOptions {
   port?: number;
@@ -50,7 +54,7 @@ export class WebApiServer {
     });
   }
 
-  private handleRequest(req: IncomingMessage, res: ServerResponse): void {
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -75,11 +79,18 @@ export class WebApiServer {
         const msg = url.searchParams.get('msg');
         
         if (!msg) {
-          this.sendResponse(res, 400, { 
-            error: 'Missing msg parameter', 
-            usage: 'Use /?msg="your message here"',
-            example: `http://localhost:${this.port}/?msg="hello"`
-          });
+          // Serve index.html if no msg parameter
+          try {
+            const htmlContent = await fs.readFile(HTML_FILE_PATH, 'utf8');
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(htmlContent);
+          } catch (readError) {
+            console.error('Error serving index.html:', readError);
+            this.sendResponse(res, 500, { 
+              error: 'Failed to load web interface', 
+              details: readError instanceof Error ? readError.message : String(readError)
+            });
+          }
           return;
         }
 
