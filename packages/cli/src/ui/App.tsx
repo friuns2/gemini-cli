@@ -547,12 +547,33 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   useEffect(() => {
     const startWebServer = async () => {
       try {
+        // Wait a bit for the system to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Only start server if GeminiClient is properly initialized
+        const geminiClient = config.getGeminiClient();
+        if (!geminiClient?.isInitialized?.()) {
+          console.log('⏳ GeminiClient not ready, retrying web server start in 2s...');
+          setTimeout(startWebServer, 2000);
+          return;
+        }
+
+        // Don't start multiple servers
+        if (webApiServer) {
+          return;
+        }
+
         const server = new WebApiServer({
           port: 3001,
           onMessage: (message: string) => {
-            // Inject message into the interactive session
-            console.log(`📨 API message received: ${message}`);
-            submitQuery(message);
+            // Check if we can safely submit the query
+            const currentGeminiClient = config.getGeminiClient();
+            if (streamingState === StreamingState.Idle && currentGeminiClient?.isInitialized?.()) {
+              console.log(`📨 API message received: ${message}`);
+              submitQuery(message);
+            } else {
+              console.log(`⚠️ Cannot process API message "${message}" - system not ready (state: ${streamingState})`);
+            }
           },
           config,
         });
@@ -566,18 +587,23 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
         });
       } catch (error) {
         console.error('Failed to start web API server:', error);
+        // Retry after a delay
+        setTimeout(startWebServer, 3000);
       }
     };
 
-    // Start the web server
-    startWebServer();
+    // Start the web server only when everything is ready
+    if (!webApiServer) {
+      startWebServer();
+    }
 
     return () => {
       if (webApiServer) {
         webApiServer.stop();
+        setWebApiServer(null);
       }
     };
-  }, [submitQuery, config]); // Depend on submitQuery so server starts when it's ready
+  }, [submitQuery, config, streamingState, webApiServer]); // Include webApiServer to prevent multiple starts
 
   useEffect(() => {
     const fetchUserMessages = async () => {

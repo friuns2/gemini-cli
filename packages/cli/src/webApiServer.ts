@@ -85,14 +85,26 @@ export class WebApiServer {
 
         // Inject the message into the interactive session
         if (this.onMessage) {
-          this.onMessage(msg);
-          this.sendResponse(res, 200, { 
-            success: true, 
-            message: `Message "${msg}" sent to interactive session`,
-            timestamp: new Date().toISOString()
-          });
+          try {
+            this.onMessage(msg);
+            this.sendResponse(res, 200, { 
+              success: true, 
+              message: `Message "${msg}" sent to interactive session`,
+              timestamp: new Date().toISOString(),
+              note: 'Check terminal for processing status'
+            });
+          } catch (error) {
+            console.error('Error processing message:', error);
+            this.sendResponse(res, 500, { 
+              error: 'Failed to process message', 
+              details: error instanceof Error ? error.message : String(error)
+            });
+          }
         } else {
-          this.sendResponse(res, 500, { error: 'Message handler not available' });
+          this.sendResponse(res, 503, { 
+            error: 'Message handler not available', 
+            message: 'Interactive session may not be ready yet'
+          });
         }
         return;
       }
