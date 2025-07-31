@@ -57,6 +57,7 @@ import {
   EditorType,
   FlashFallbackEvent,
   logFlashFallback,
+  Logger,
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from '../config/auth.js';
 import { useLogger } from './hooks/useLogger.js';
@@ -80,6 +81,7 @@ import ansiEscapes from 'ansi-escapes';
 import { OverflowProvider } from './contexts/OverflowContext.js';
 import { ShowMoreLines } from './components/ShowMoreLines.js';
 import { PrivacyNotice } from './privacy/PrivacyNotice.js';
+import { HistoryItemWithoutId } from './types.js';
 
 const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
 
@@ -576,6 +578,91 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     };
     fetchUserMessages();
   }, [history, logger]);
+
+  // Auto-load session if sessionTag is provided
+  useEffect(() => {
+    const autoLoadSession = async () => {
+      const sessionTag = config.getSessionTag();
+      if (sessionTag && logger && history.length === 0) {
+        try {
+          const conversation = await logger.loadCheckpoint(sessionTag);
+          if (conversation.length > 0) {
+            clearItems();
+            config.getGeminiClient()?.getChat().clearHistory();
+            const rolemap: { [key: string]: string } = {
+              user: 'user',
+              model: 'gemini',
+            };
+            let hasSystemPrompt = false;
+            let i = 0;
+            for (const item of conversation) {
+              i += 1;
+              
+              // Add each item to history regardless of whether we display it.
+              config.getGeminiClient()?.addHistory(item);
+              
+              const text =
+                item.parts
+                  ?.filter((m) => !!m.text)
+                  .map((m) => m.text)
+                  .join('') || '';
+              if (!text) {
+                // Parsing Part[] back to various non-text output not yet implemented.
+                continue;
+              }
+              if (i === 1 && text.match(/context for our chat/)) {
+                hasSystemPrompt = true;
+              }
+              if (i > 2 || !hasSystemPrompt) {
+                addItem(
+                  {
+                    type: (item.role && rolemap[item.role]) || 'gemini',
+                    text,
+                  } as HistoryItemWithoutId,
+                  i,
+                );
+              }
+            }
+            console.clear();
+            refreshStatic();
+            console.log(`Session "${sessionTag}" loaded successfully.`);
+          } else {
+            console.log(`No saved session found with tag: ${sessionTag}.`);
+          }
+        } catch (error) {
+          console.error(`Error loading session "${sessionTag}":`, error);
+        }
+      }
+    };
+    
+    autoLoadSession();
+  }, [config, logger, history.length, clearItems, addItem, refreshStatic]);
+
+  // Auto-save session after each response if sessionTag is provided
+  useEffect(() => {
+    const autoSaveSession = async () => {
+      const sessionTag = config.getSessionTag();
+      if (sessionTag && logger && history.length > 0) {
+        // Check if the last message is a gemini response (not user message)
+        const lastMessage = history[history.length - 1];
+        if (lastMessage && (lastMessage.type === 'gemini' || lastMessage.type === 'gemini_content')) {
+          try {
+            // Get the conversation history from gemini client
+            const conversation = config.getGeminiClient()?.getHistory() || [];
+            if (conversation.length > 0) {
+              await logger.saveCheckpoint(conversation, sessionTag);
+            }
+          } catch (error) {
+            console.error(`Error auto-saving session "${sessionTag}":`, error);
+          }
+        }
+      }
+    };
+
+    // Add a small delay to ensure the history is fully updated
+    const timeoutId = setTimeout(autoSaveSession, 100);
+    return () => clearTimeout(timeoutId);
+  }, [config, logger, history]);
 
   const isInputActive = streamingState === StreamingState.Idle && !initError;
 

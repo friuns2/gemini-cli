@@ -54,6 +54,7 @@ export interface CliArgs {
   allowedMcpServerNames: string[] | undefined;
   extensions: string[] | undefined;
   listExtensions: boolean | undefined;
+  session: string | undefined;
 }
 
 export async function parseArguments(): Promise<CliArgs> {
@@ -175,6 +176,10 @@ export async function parseArguments(): Promise<CliArgs> {
       type: 'boolean',
       description: 'List all available extensions and exit.',
     })
+    .option('session', {
+      type: 'string',
+      description: 'Session tag to auto-load and auto-save conversation state.',
+    })
 
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
     .alias('v', 'version')
@@ -277,6 +282,7 @@ export async function loadCliConfig(
 
   return new Config({
     sessionId,
+    sessionTag: argv.session,
     embeddingModel: DEFAULT_GEMINI_EMBEDDING_MODEL,
     sandbox: sandboxConfig,
     targetDir: process.cwd(),
