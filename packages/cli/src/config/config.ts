@@ -180,6 +180,7 @@ export async function parseArguments(): Promise<CliArgs> {
       type: 'boolean',
       description:
         'If set, the CLI will listen for commands over a WebSocket connection.',
+      default: true,
     })
 
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
