@@ -237,12 +237,12 @@ export async function retryWithBackoff<T>(
       } else {
         // Fallback to exponential backoff with jitter (only if account switching didn't work)
         if (accountsTriedCount === 0 || errorStatus !== 429) {
-          logRetryAttempt(attempt, error, errorStatus);
-          // Add jitter: +/- 30% of currentDelay
-          const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
-          const delayWithJitter = Math.max(0, currentDelay + jitter);
-          await delay(delayWithJitter);
-          currentDelay = Math.min(maxDelayMs, currentDelay * 2);
+        logRetryAttempt(attempt, error, errorStatus);
+        // Add jitter: +/- 30% of currentDelay
+        const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
+        const delayWithJitter = Math.max(0, currentDelay + jitter);
+        await delay(delayWithJitter);
+        currentDelay = Math.min(maxDelayMs, currentDelay * 2);
         }
       }
     }
