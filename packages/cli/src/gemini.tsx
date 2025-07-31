@@ -40,9 +40,7 @@ import {
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from './config/auth.js';
 import { setMaxSizedBoxDebugging } from './ui/components/shared/MaxSizedBox.js';
-import express from 'express';
-import { WebSocket, WebSocketServer } from 'ws';
-import * as http from 'http';
+import { WebServer } from './webServer.js';
 
 function getNodeMemoryArgs(config: Config): string[] {
   const totalMemoryMB = os.totalmem() / (1024 * 1024);
@@ -129,66 +127,6 @@ export async function main() {
     process.exit(0);
   }
 
-  // New block for web server
-  if (argv.listen) {
-    const app = express();
-    const server = http.createServer(app);
-    const wss = new WebSocketServer({ server });
-
-    wss.on('connection', (ws: WebSocket) => {
-      console.log('WebSocket client connected');
-
-      ws.on('message', async (message: string) => {
-        const command = message.toString();
-        console.log(`Received command: ${command}`);
-
-        const prompt_id = Math.random().toString(16).slice(2);
-        logUserPrompt(config, {
-          'event.name': 'user_prompt',
-          'event.timestamp': new Date().toISOString(),
-          prompt: command,
-          prompt_id,
-          auth_type: config.getContentGeneratorConfig()?.authType,
-          prompt_length: command.length,
-        });
-
-        const nonInteractiveConfig = await loadNonInteractiveConfig(
-          config,
-          extensions,
-          settings,
-          argv,
-        );
-
-        try {
-          await runNonInteractive(nonInteractiveConfig, command, prompt_id, (content) => {
-            ws.send(JSON.stringify({ type: 'output', content }));
-          });
-          ws.send(JSON.stringify({ type: 'status', message: 'Command executed successfully.' }));
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          ws.send(JSON.stringify({ type: 'error', message: errorMessage }));
-          console.error('Error executing command:', error);
-        }
-      });
-
-      ws.on('close', () => {
-        console.log('WebSocket client disconnected');
-      });
-
-      ws.on('error', (error: Error) => {
-        console.error('WebSocket error:', error);
-      });
-    });
-
-    const port = process.env.PORT || 3000;
-    server.listen(port, () => {
-      console.log(`Web server listening on port ${port}`);
-    });
-
-    // Keep the process alive
-    return new Promise(() => {});
-  }
-
   // Set a default auth type if one isn't set.
   if (!settings.merged.selectedAuthType) {
     if (process.env.CLOUD_SHELL === 'true') {
@@ -250,6 +188,44 @@ export async function main() {
   ) {
     // Do oauth before app renders to make copying the link possible.
     await getOauthClient(settings.merged.selectedAuthType, config);
+  }
+
+  // Check if web server mode is enabled
+  if (argv.web) {
+    const port = argv.webPort || 8080;
+    console.log(`Starting Gemini CLI in web server mode...`);
+    
+    const webServer = new WebServer({
+      port,
+      config,
+      settings,
+      extensions,
+      argv,
+    });
+    
+    try {
+      await webServer.start();
+      
+      // Handle graceful shutdown
+      process.on('SIGINT', async () => {
+        console.log('\nShutting down web server...');
+        await webServer.stop();
+        process.exit(0);
+      });
+      
+      process.on('SIGTERM', async () => {
+        console.log('\nShutting down web server...');
+        await webServer.stop();
+        process.exit(0);
+      });
+      
+      // Keep the process running
+      await new Promise(() => {}); // This will keep the process alive
+    } catch (error) {
+      console.error('Failed to start web server:', error);
+      process.exit(1);
+    }
+    return;
   }
 
   let input = config.getQuestion();

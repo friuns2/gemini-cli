@@ -47,7 +47,6 @@ export async function runNonInteractive(
   config: Config,
   input: string,
   prompt_id: string,
-  onOutput?: (output: string) => void,
 ): Promise<void> {
   await config.initialize();
   // Handle EPIPE errors when the output is piped to a command that closes early.
@@ -72,12 +71,9 @@ export async function runNonInteractive(
         config.getMaxSessionTurns() > 0 &&
         turnCount > config.getMaxSessionTurns()
       ) {
-        const errorMessage = '\n Reached max session turns for this session. Increase the number of turns by specifying maxSessionTurns in settings.json.';
-        if (onOutput) {
-          onOutput(errorMessage);
-        } else {
-          console.error(errorMessage);
-        }
+        console.error(
+          '\n Reached max session turns for this session. Increase the number of turns by specifying maxSessionTurns in settings.json.',
+        );
         return;
       }
       const functionCalls: FunctionCall[] = [];
@@ -97,21 +93,12 @@ export async function runNonInteractive(
 
       for await (const resp of responseStream) {
         if (abortController.signal.aborted) {
-          const cancelledMessage = 'Operation cancelled.';
-          if (onOutput) {
-            onOutput(cancelledMessage);
-          } else {
-            console.error(cancelledMessage);
-          }
+          console.error('Operation cancelled.');
           return;
         }
         const textPart = getResponseText(resp);
         if (textPart) {
-          if (onOutput) {
-            onOutput(textPart);
-          } else {
-            process.stdout.write(textPart);
-          }
+          process.stdout.write(textPart);
         }
         if (resp.functionCalls) {
           functionCalls.push(...resp.functionCalls);

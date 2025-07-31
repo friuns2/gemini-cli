@@ -54,7 +54,8 @@ export interface CliArgs {
   allowedMcpServerNames: string[] | undefined;
   extensions: string[] | undefined;
   listExtensions: boolean | undefined;
-  listen: boolean | undefined;
+  web: boolean | undefined;
+  webPort: number | undefined;
 }
 
 export async function parseArguments(): Promise<CliArgs> {
@@ -176,11 +177,15 @@ export async function parseArguments(): Promise<CliArgs> {
       type: 'boolean',
       description: 'List all available extensions and exit.',
     })
-    .option('listen', {
+    .option('web', {
       type: 'boolean',
-      description:
-        'If set, the CLI will listen for commands over a WebSocket connection.',
-      default: true,
+      description: 'Run in web server mode?',
+      default: false,
+    })
+    .option('web-port', {
+      type: 'number',
+      description: 'Port for the web server.',
+      default: 8080,
     })
 
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
