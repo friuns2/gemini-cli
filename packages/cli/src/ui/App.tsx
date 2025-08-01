@@ -16,7 +16,7 @@ import {
   useInput,
   type Key as InkKeyType,
 } from 'ink';
-import { StreamingState, type HistoryItem, MessageType } from './types.js';
+import { StreamingState, type HistoryItem, MessageType, type HistoryItemWithoutId } from './types.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { useGeminiStream } from './hooks/useGeminiStream.js';
 import { useLoadingIndicator } from './hooks/useLoadingIndicator.js';
@@ -57,7 +57,6 @@ import {
   EditorType,
   FlashFallbackEvent,
   logFlashFallback,
-  Logger,
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from '../config/auth.js';
 import { useLogger } from './hooks/useLogger.js';
@@ -81,7 +80,6 @@ import ansiEscapes from 'ansi-escapes';
 import { OverflowProvider } from './contexts/OverflowContext.js';
 import { ShowMoreLines } from './components/ShowMoreLines.js';
 import { PrivacyNotice } from './privacy/PrivacyNotice.js';
-import { HistoryItemWithoutId } from './types.js';
 
 const CTRL_EXIT_PROMPT_DURATION_MS = 1000;
 
@@ -390,6 +388,102 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     openPrivacyNotice,
   );
   const pendingHistoryItems = [...pendingSlashCommandHistoryItems];
+  
+  const geminiClient = config.getGeminiClient();
+
+  // Auto-load session if --session flag is provided
+  useEffect(() => {
+    const sessionName = config.getSessionName();
+    if (
+      sessionName && 
+      !isAuthenticating &&
+      !isAuthDialogOpen &&
+      !isThemeDialogOpen &&
+      !isEditorDialogOpen &&
+      !showPrivacyNotice &&
+      geminiClient?.isInitialized?.()
+    ) {
+      // Load session directly without using handleSlashCommand to avoid UI disruption
+      const loadSession = async () => {
+        try {
+          const { Logger } = await import('@google/gemini-cli-core');
+          const logger = new Logger(config.getSessionId() || '');
+          await logger.initialize();
+          const conversation = await logger.loadCheckpoint(sessionName);
+          
+          if (config.getDebugMode()) {
+            console.debug(`[Session Auto-load] Found ${conversation.length} items in session "${sessionName}"`);
+          }
+          
+          if (conversation.length > 0) {
+            // Load the conversation into chat history
+            const chat = geminiClient.getChat();
+            chat.clearHistory();
+            
+            if (config.getDebugMode()) {
+              console.debug(`[Session Auto-load] Loading conversation into chat history`);
+            }
+            
+            const rolemap: { [key: string]: MessageType } = {
+              user: MessageType.USER,
+              model: MessageType.GEMINI,
+            };
+            
+            let hasSystemPrompt = false;
+            let i = 0;
+            for (const item of conversation) {
+              i += 1;
+              // Add each item to history regardless of whether we display it
+              chat.addHistory(item);
+              
+              const text = item.parts
+                ?.filter((m) => !!m.text)
+                .map((m) => m.text)
+                .join('') || '';
+              if (!text) {
+                continue;
+              }
+              if (i === 1 && text.match(/context for our chat/)) {
+                hasSystemPrompt = true;
+              }
+              if (i > 2 || !hasSystemPrompt) {
+                if (config.getDebugMode()) {
+                  console.debug(`[Session Auto-load] Adding UI item ${i}: ${item.role} - "${text.substring(0, 50)}..."`);
+                }
+                addItem(
+                  {
+                    type: (item.role && rolemap[item.role]) || MessageType.GEMINI,
+                    text,
+                  } as HistoryItemWithoutId,
+                  i,
+                );
+              }
+            }
+            
+            if (config.getDebugMode()) {
+              console.debug(`[Session Auto-load] Session loaded successfully`);
+            }
+          }
+        } catch (error) {
+          // Silently fail session loading to not disrupt user experience
+          if (config.getDebugMode()) {
+            console.debug('Session auto-load failed:', error);
+          }
+        }
+      };
+      
+      loadSession();
+    }
+  }, [
+    config, 
+    addItem,
+    isAuthenticating,
+    isAuthDialogOpen,
+    isThemeDialogOpen,
+    isEditorDialogOpen,
+    showPrivacyNotice,
+    geminiClient,
+  ]);
 
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize();
   const isInitialMount = useRef(true);
@@ -579,92 +673,6 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     fetchUserMessages();
   }, [history, logger]);
 
-  // Auto-load session if sessionTag is provided
-  useEffect(() => {
-    const autoLoadSession = async () => {
-      const sessionTag = config.getSessionTag();
-      const geminiClient = config.getGeminiClient();
-      if (sessionTag && logger && history.length === 0 && geminiClient?.isInitialized?.()) {
-        try {
-          const conversation = await logger.loadCheckpoint(sessionTag);
-          if (conversation.length > 0) {
-            clearItems();
-            geminiClient.getChat().clearHistory();
-            const rolemap: { [key: string]: string } = {
-              user: 'user',
-              model: 'gemini',
-            };
-            let hasSystemPrompt = false;
-            let i = 0;
-            for (const item of conversation) {
-              i += 1;
-              
-              // Add each item to history regardless of whether we display it.
-              geminiClient?.addHistory(item);
-              
-              const text =
-                item.parts
-                  ?.filter((m) => !!m.text)
-                  .map((m) => m.text)
-                  .join('') || '';
-              if (!text) {
-                // Parsing Part[] back to various non-text output not yet implemented.
-                continue;
-              }
-              if (i === 1 && text.match(/context for our chat/)) {
-                hasSystemPrompt = true;
-              }
-              if (i > 2 || !hasSystemPrompt) {
-                addItem(
-                  {
-                    type: (item.role && rolemap[item.role]) || 'gemini',
-                    text,
-                  } as HistoryItemWithoutId,
-                  i,
-                );
-              }
-            }
-            console.clear();
-            refreshStatic();
-            console.log(`Session "${sessionTag}" loaded successfully.`);
-          } else {
-            console.log(`No saved session found with tag: ${sessionTag}.`);
-          }
-        } catch (error) {
-          console.error(`Error loading session "${sessionTag}":`, error);
-        }
-      }
-    };
-    
-    autoLoadSession();
-  }, [config, logger, history.length, clearItems, addItem, refreshStatic, config.getGeminiClient()]);
-
-  // Auto-save session after each response if sessionTag is provided
-  useEffect(() => {
-    const autoSaveSession = async () => {
-      const sessionTag = config.getSessionTag();
-      if (sessionTag && logger && history.length > 0) {
-        // Check if the last message is a gemini response (not user message)
-        const lastMessage = history[history.length - 1];
-        if (lastMessage && (lastMessage.type === 'gemini' || lastMessage.type === 'gemini_content')) {
-          try {
-            // Get the conversation history from gemini client
-            const conversation = config.getGeminiClient()?.getHistory() || [];
-            if (conversation.length > 0) {
-              await logger.saveCheckpoint(conversation, sessionTag);
-            }
-          } catch (error) {
-            console.error(`Error auto-saving session "${sessionTag}":`, error);
-          }
-        }
-      }
-    };
-
-    // Add a small delay to ensure the history is fully updated
-    const timeoutId = setTimeout(autoSaveSession, 100);
-    return () => clearTimeout(timeoutId);
-  }, [config, logger, history]);
-
   const isInputActive = streamingState === StreamingState.Idle && !initError;
 
   const handleClearScreen = useCallback(() => {
@@ -733,7 +741,6 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   }, [settings.merged.contextFileName]);
 
   const initialPrompt = useMemo(() => config.getQuestion(), [config]);
-  const geminiClient = config.getGeminiClient();
 
   useEffect(() => {
     if (

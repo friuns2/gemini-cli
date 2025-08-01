@@ -599,6 +599,31 @@ export const useGeminiStream = (
         }
       } finally {
         setIsResponding(false);
+        
+        // Auto-save session if session name is provided
+        const sessionName = config.getSessionName();
+        if (sessionName && !options?.isContinuation) {
+          try {
+            const { Logger } = await import('@google/gemini-cli-core');
+            const logger = new Logger(config.getSessionId() || '');
+            await logger.initialize();
+            const geminiClient = config.getGeminiClient();
+            if (geminiClient && geminiClient.isInitialized()) {
+              const chat = await geminiClient.getChat();
+              if (chat) {
+                const history = chat.getHistory();
+                if (history.length > 0) {
+                  await logger.saveCheckpoint(history, sessionName);
+                }
+              }
+            }
+          } catch (error) {
+            // Silently fail auto-save to not disrupt user experience
+            if (config.getDebugMode()) {
+              console.debug('Auto-save failed:', error);
+            }
+          }
+        }
       }
     },
     [

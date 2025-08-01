@@ -109,7 +109,6 @@ export type FlashFallbackHandler = (
 
 export interface ConfigParameters {
   sessionId: string;
-  sessionTag?: string;
   embeddingModel?: string;
   sandbox?: SandboxConfig;
   targetDir: string;
@@ -145,12 +144,12 @@ export interface ConfigParameters {
   listExtensions?: boolean;
   activeExtensions?: ActiveExtension[];
   noBrowser?: boolean;
+  sessionName?: string;
 }
 
 export class Config {
   private toolRegistry!: ToolRegistry;
   private readonly sessionId: string;
-  private readonly sessionTag: string | undefined;
   private contentGeneratorConfig!: ContentGeneratorConfig;
   private readonly embeddingModel: string;
   private readonly sandbox: SandboxConfig | undefined;
@@ -193,10 +192,10 @@ export class Config {
   private quotaErrorOccurred: boolean = false;
   private autoCycleAccounts: boolean = false;
   private currentAccountIndex: number = 0;
+  private readonly sessionName: string | undefined;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
-    this.sessionTag = params.sessionTag;
     this.embeddingModel =
       params.embeddingModel ?? DEFAULT_GEMINI_EMBEDDING_MODEL;
     this.sandbox = params.sandbox;
@@ -239,6 +238,7 @@ export class Config {
     this.listExtensions = params.listExtensions ?? false;
     this._activeExtensions = params.activeExtensions ?? [];
     this.noBrowser = params.noBrowser ?? false;
+    this.sessionName = params.sessionName;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -285,10 +285,6 @@ export class Config {
 
   getSessionId(): string {
     return this.sessionId;
-  }
-
-  getSessionTag(): string | undefined {
-    return this.sessionTag;
   }
 
   getContentGeneratorConfig(): ContentGeneratorConfig {
@@ -505,6 +501,10 @@ export class Config {
 
   getNoBrowser(): boolean {
     return this.noBrowser;
+  }
+
+  getSessionName(): string | undefined {
+    return this.sessionName;
   }
 
   async getGitService(): Promise<GitService> {
