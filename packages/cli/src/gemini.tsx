@@ -103,13 +103,22 @@ export async function main() {
   }
 
   const argv = await parseArguments();
-  const extensions = loadExtensions(workspaceRoot);
-  const config = await loadCliConfig(
-    settings.merged,
-    extensions,
-    sessionId,
-    argv,
-  );
+
+  // When `--list-extensions` is present, list and exit.
+  if (argv.listExtensions) {
+    const allExtensions = await loadExtensions(workspaceRoot);
+    console.log(`Available extensions:\n\n${allExtensions.length === 0 ? '  No extensions found.' : allExtensions.map((e) => `  - ${e.config.name} (v${e.config.version})`).join('\n')}\n
+If you want to enable an extension, use the --extensions flag:
+  gemini --extensions @google/gemini-cli-ext-code-assist\n
+For more details, see: https://goo.gle/gemini-cli-docs-extensions
+`);
+    process.exit(0);
+  }
+
+  const extensions = await loadExtensions(workspaceRoot);
+
+  const config = await loadCliConfig(settings.merged, extensions, sessionId, argv);
+  await config.initialize(); // Initialize the config here
 
   if (argv.promptInteractive && !process.stdin.isTTY) {
     console.error(
