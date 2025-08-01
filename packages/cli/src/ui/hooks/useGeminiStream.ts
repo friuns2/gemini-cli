@@ -607,11 +607,14 @@ export const useGeminiStream = (
             const { Logger } = await import('@google/gemini-cli-core');
             const logger = new Logger(config.getSessionId() || '');
             await logger.initialize();
-            const chat = await config.getGeminiClient()?.getChat();
-            if (chat) {
-              const history = chat.getHistory();
-              if (history.length > 0) {
-                await logger.saveCheckpoint(history, sessionName);
+            const geminiClient = config.getGeminiClient();
+            if (geminiClient && geminiClient.isInitialized()) {
+              const chat = await geminiClient.getChat();
+              if (chat) {
+                const history = chat.getHistory();
+                if (history.length > 0) {
+                  await logger.saveCheckpoint(history, sessionName);
+                }
               }
             }
           } catch (error) {

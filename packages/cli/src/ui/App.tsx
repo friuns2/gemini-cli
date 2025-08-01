@@ -392,11 +392,28 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   // Auto-load session if --session flag is provided
   useEffect(() => {
     const sessionName = config.getSessionName();
-    if (sessionName) {
-      // Simulate the /chat load command
-      handleSlashCommand(`/chat load ${sessionName}`);
+    if (sessionName && !isAuthenticating) {
+      // Wait for authentication to complete and GeminiClient to be available
+      const geminiClient = config.getGeminiClient();
+      if (geminiClient && geminiClient.isInitialized()) {
+        // Client is already initialized, load the session immediately
+        handleSlashCommand(`/chat load ${sessionName}`);
+      } else if (geminiClient) {
+        // Client exists but not initialized yet, wait for initialization
+        const checkInitialization = setInterval(() => {
+          if (geminiClient.isInitialized()) {
+            clearInterval(checkInitialization);
+            handleSlashCommand(`/chat load ${sessionName}`);
+          }
+        }, 100); // Check every 100ms
+        
+        // Cleanup interval on unmount or if sessionName changes
+        return () => clearInterval(checkInitialization);
+      }
+      // If geminiClient is null, it means authentication hasn't completed yet
+      // This useEffect will run again when isAuthenticating changes to false
     }
-  }, [config, handleSlashCommand]);
+  }, [config, handleSlashCommand, isAuthenticating]);
 
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize();
   const isInitialMount = useRef(true);
