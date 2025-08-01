@@ -178,7 +178,7 @@ export async function parseArguments(): Promise<CliArgs> {
     })
     .option('session', {
       type: 'string',
-      description: 'Auto-load and auto-save chat session with the specified name',
+      description: 'Session tag to auto-load and auto-save conversation state.',
     })
 
     .version(await getCliVersion()) // This will enable the --version flag based on package.json
@@ -282,6 +282,7 @@ export async function loadCliConfig(
 
   return new Config({
     sessionId,
+    sessionTag: argv.session,
     embeddingModel: DEFAULT_GEMINI_EMBEDDING_MODEL,
     sandbox: sandboxConfig,
     targetDir: process.cwd(),
@@ -338,7 +339,6 @@ export async function loadCliConfig(
       version: e.config.version,
     })),
     noBrowser: !!process.env.NO_BROWSER,
-    sessionName: argv.session,
   });
 }
 

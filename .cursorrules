@@ -1,1 +1,1 @@
-run npm build after changes
+you should always run npm build after changes and test with node packages/cli/dist/index.js --debug
