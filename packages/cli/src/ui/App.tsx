@@ -583,12 +583,13 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   useEffect(() => {
     const autoLoadSession = async () => {
       const sessionTag = config.getSessionTag();
-      if (sessionTag && logger && history.length === 0) {
+      const geminiClient = config.getGeminiClient();
+      if (sessionTag && logger && history.length === 0 && geminiClient?.isInitialized?.()) {
         try {
           const conversation = await logger.loadCheckpoint(sessionTag);
           if (conversation.length > 0) {
             clearItems();
-            config.getGeminiClient()?.getChat().clearHistory();
+            geminiClient.getChat().clearHistory();
             const rolemap: { [key: string]: string } = {
               user: 'user',
               model: 'gemini',
@@ -599,7 +600,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
               i += 1;
               
               // Add each item to history regardless of whether we display it.
-              config.getGeminiClient()?.addHistory(item);
+              geminiClient?.addHistory(item);
               
               const text =
                 item.parts
@@ -636,7 +637,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     };
     
     autoLoadSession();
-  }, [config, logger, history.length, clearItems, addItem, refreshStatic]);
+  }, [config, logger, history.length, clearItems, addItem, refreshStatic, config.getGeminiClient()]);
 
   // Auto-save session after each response if sessionTag is provided
   useEffect(() => {
