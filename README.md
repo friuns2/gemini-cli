@@ -1,5 +1,11 @@
 # Gemini CLI
 
+> Updated features
+>
+> - Pro model is preserved: automatic fallback to Flash has been disabled; the CLI no longer switches models behind the scenes.
+> - Auto account switching on API errors: when an API call fails (429/403/5xx) under Google Login, the CLI cycles to the next saved account and retries with that account instead of retrying on the same one.
+> - Session naming: configuration now supports an optional sessionName to help identify and track sessions programmatically and in logs.
+
 [![Gemini CLI CI](https://github.com/google-gemini/gemini-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/google-gemini/gemini-cli/actions/workflows/ci.yml)
 
 ![Gemini CLI Screenshot](./docs/assets/gemini-screenshot.png)
